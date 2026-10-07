@@ -10,7 +10,8 @@ def check_wordpress_access(email):
             WORDPRESS_ACCESS_URL,
             headers={
                 "Content-Type": "application/json",
-                "X-Tboat-API-Key": st.secrets["TBOAT_API_KEY"]
+                "X-Tboat-API-Key": st.secrets["TBOAT_API_KEY"],
+                "User-Agent": "Tboat-Streamlit-App/1.0"
             },
             json={"email": email.strip().lower()},
             timeout=10,
