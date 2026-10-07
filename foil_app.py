@@ -18,8 +18,9 @@ def check_wordpress_access(email):
             if data.get("valid"):
                 return data.get("access", "standard")
         return None
-    except Exception:
-        return None
+    except Exception as e:
+    st.error(f"Connection error: {e}")
+    return None
 
 if "customer_email" not in st.session_state:
     st.session_state.customer_email = ""
