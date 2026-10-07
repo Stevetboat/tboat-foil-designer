@@ -8,19 +8,25 @@ def check_wordpress_access(email):
     try:
         response = requests.post(
             WORDPRESS_ACCESS_URL,
-            headers={"Content-Type": "application/json",
-                     "X-Tboat-API-Key": st.secrets["TBOAT_API_KEY"]},
+            headers={
+                "Content-Type": "application/json",
+                "X-Tboat-API-Key": st.secrets["TBOAT_API_KEY"]
+            },
             json={"email": email.strip().lower()},
             timeout=10,
         )
+
         if response.status_code == 200:
             data = response.json()
             if data.get("valid"):
                 return data.get("access", "standard")
+
+        st.error(f"WordPress returned status {response.status_code}: {response.text}")
         return None
-        except Exception as e:
-            st.error(f"Connection error: {e}")
-            return None
+
+    except Exception as e:
+        st.error(f"Connection error: {e}")
+        return None
 
 if "customer_email" not in st.session_state:
     st.session_state.customer_email = ""
