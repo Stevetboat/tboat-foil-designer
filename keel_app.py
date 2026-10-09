@@ -592,13 +592,25 @@ with st.expander('Calculation assumptions'):
     st.write('End-plate effects: hull and bulb effects are not included in keel-only calculations. They will be applied in the combined keel/bulb analysis.')
     st.write('Hull/keel junction, free-surface, heel, ventilation and detailed 3D pressure effects are not included. Use these figures for preliminary comparison rather than final CFD-level prediction.')
 
+
 st.subheader('PDF design report')
-pdf_bytes=make_pdf_report(top_setout,bot_setout,top_chord,bot_chord,top_depth,span,
-                          top_t,bot_t,top_series,bot_series,speed_kn,alpha_deg,h)
-if pdf_bytes:
-    st.download_button('Create / download PDF design report',data=pdf_bytes,
-                       file_name='Tboats_Keel_Design_Report.pdf',mime='application/pdf')
+
+if st.session_state.get("app_access") == "advanced":
+    pdf_bytes = make_pdf_report(
+        top_setout, bot_setout, top_chord, bot_chord,
+        top_depth, span, top_t, bot_t,
+        top_series, bot_series, speed_kn, alpha_deg, h
+    )
+    if pdf_bytes:
+        st.download_button(
+            'Create / download PDF design report',
+            data=pdf_bytes,
+            file_name='Tboats_Keel_Design_Report.pdf',
+            mime='application/pdf'
+        )
+    else:
+        st.warning('PDF creation needs matplotlib installed.')
 else:
-    st.warning('PDF creation needs matplotlib installed in this Python environment.')
+    st.info('PDF reports are available with Advanced Access.')
 
 st.info('Next development step: combine the approved keel geometry with the bulb designer and then introduce installed hull/bulb end-plate effects.')
