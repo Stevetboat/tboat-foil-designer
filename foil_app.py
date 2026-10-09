@@ -12,6 +12,7 @@ def api_headers():
     return {
         "Content-Type": "application/json",
         "X-Tboat-API-Key": st.secrets["TBOAT_API_KEY"],
+        "User-Agent": "Tboat-Streamlit-App/1.0",
     }
 
 
