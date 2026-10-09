@@ -14,6 +14,7 @@ except Exception:
     MATPLOTLIB_AVAILABLE = False
 
 
+st.session_state.setdefault("app_access", "standard")
 st.set_page_config(page_title='Tboats Bulb Analyser', layout='wide')
 
 LEAD_DENSITY_DEFAULT = 11340.0  # kg/m3
