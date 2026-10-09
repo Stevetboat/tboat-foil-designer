@@ -754,8 +754,8 @@ def zero_pitch_section_cl(section_series, top_pct, bottom_pct, max_thickness_pos
     dzdx = np.gradient(z_camber, x)
 
     # Standard thin-airfoil Fourier coefficients at alpha = 0.
-    A0 = -(1.0/np.pi) * np.trapz(dzdx, theta)
-    A1 =  (2.0/np.pi) * np.trapz(dzdx*np.cos(theta), theta)
+    A0 = -(1.0/np.pi) * np.trapezoid(dzdx, theta)
+    A1 =  (2.0/np.pi) * np.trapezoid(dzdx*np.cos(theta), theta)
     return float(2.0*np.pi*(A0 + 0.5*A1))
 
 
@@ -1001,47 +1001,47 @@ if mesh is not None:
     if not m['Watertight']:
         st.warning('This mesh is not watertight. Surface dimensions and area are usable, but volume and lead weight are not reliable.')
 
-        if mode == 'Create bulb' and st.session_state.get("app_access") == "advanced":
-        st.subheader('Export')
-        e1, e2 = st.columns(2)
-        with e1:
-            export_mesh = mesh.copy()
-            export_mesh.apply_scale(1000.0)  # STL coordinates in millimetres
-            stl_bytes = export_mesh.export(file_type='stl')
-            if isinstance(stl_bytes, str):
-                stl_bytes = stl_bytes.encode('utf-8')
-            st.download_button(
-                'Export STL',
-                data=stl_bytes,
-                file_name='Tboats_bulb.stl',
-                mime='model/stl',
-                use_container_width=True
-            )
-            st.caption('Exports the current bulb as a closed STL with coordinates in millimetres.')
-
-        with e2:
-            pdf_bytes = build_bulb_pdf(
-                mesh, m, length_mm / 1000.0, shape_mode, max_thickness_pos,
-                thickness_pct=thickness_pct,
-                top_pct=top_pct, bottom_pct=bottom_pct,
-                width_m=(width_mm / 1000.0) if width_mm is not None else None,
-                le_radius_factor=le_radius_factor, beaver_tail_pct=beaver_tail_pct
-            )
-            if pdf_bytes is not None:
+    if mode == 'Create bulb' and st.session_state.get('app_access') == 'advanced':
+            st.subheader('Export')
+            e1, e2 = st.columns(2)
+            with e1:
+                export_mesh = mesh.copy()
+                export_mesh.apply_scale(1000.0)  # STL coordinates in millimetres
+                stl_bytes = export_mesh.export(file_type='stl')
+                if isinstance(stl_bytes, str):
+                    stl_bytes = stl_bytes.encode('utf-8')
                 st.download_button(
-                    'Print / Save PDF',
-                    data=pdf_bytes,
-                    file_name='Tboats_bulb_drawing.pdf',
-                    mime='application/pdf',
+                    'Export STL',
+                    data=stl_bytes,
+                    file_name='Tboats_bulb.stl',
+                    mime='model/stl',
                     use_container_width=True
                 )
-                st.caption('Creates an A4 landscape drawing using the same stations as the 2D and 3D views.')
-            else:
-                st.button('Print / Save PDF', disabled=True, use_container_width=True)
-                st.caption('Install matplotlib to enable PDF export: python3 -m pip install matplotlib')
-        elif mode == 'Create bulb':
-            st.info('PDF and STL downloads are available with Advanced Access.')    
-            
+                st.caption('Exports the current bulb as a closed STL with coordinates in millimetres.')
+
+            with e2:
+                pdf_bytes = build_bulb_pdf(
+                    mesh, m, length_mm / 1000.0, shape_mode, max_thickness_pos,
+                    thickness_pct=thickness_pct,
+                    top_pct=top_pct, bottom_pct=bottom_pct,
+                    width_m=(width_mm / 1000.0) if width_mm is not None else None,
+                    le_radius_factor=le_radius_factor, beaver_tail_pct=beaver_tail_pct
+                )
+                if pdf_bytes is not None:
+                    st.download_button(
+                        'Print / Save PDF',
+                        data=pdf_bytes,
+                        file_name='Tboats_bulb_drawing.pdf',
+                        mime='application/pdf',
+                        use_container_width=True
+                    )
+                    st.caption('Creates an A4 landscape drawing using the same stations as the 2D and 3D views.')
+                else:
+                    st.button('Print / Save PDF', disabled=True, use_container_width=True)
+                    st.caption('Install matplotlib to enable PDF export: python3 -m pip install matplotlib')
+    elif mode == 'Create bulb':
+        st.info('PDF and STL downloads are available with Advanced Access.')
+
     st.subheader('Top and bottom overview')
     verts = mesh.vertices
     top = verts[verts[:,2] >= 0]
