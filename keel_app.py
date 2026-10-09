@@ -380,7 +380,7 @@ def hydro_results(top_chord, bot_chord, top_t, bot_t, top_series, bot_series,
     pr_top = section_perimeter_ratio(top_t, top_series)
     pr_bot = section_perimeter_ratio(bot_t, bot_series)
     pr = pr_top + (pr_bot-pr_top)*eta
-    swet = float(np.trapz(chords*pr, eta) * b)
+    swet = float(np.trapezoid(chords*pr, eta) * b)
 
     # Finite-wing lift slope, incompressible flow.
     a0 = 2.0*math.pi
