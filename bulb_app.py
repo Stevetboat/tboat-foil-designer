@@ -1038,8 +1038,8 @@ if mesh is not None:
             else:
                 st.button('Print / Save PDF', disabled=True, use_container_width=True)
                 st.caption('Install matplotlib to enable PDF export: python3 -m pip install matplotlib')
-        elif mode == 'Create bulb':
-            st.info('PDF and STL downloads are available with Advanced Access.')
+        
+            
     st.subheader('Top and bottom overview')
     verts = mesh.vertices
     top = verts[verts[:,2] >= 0]
