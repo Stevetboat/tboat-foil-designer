@@ -1000,7 +1000,7 @@ if mesh is not None:
     if not m['Watertight']:
         st.warning('This mesh is not watertight. Surface dimensions and area are usable, but volume and lead weight are not reliable.')
 
-    if mode == 'Create bulb':
+        if mode == 'Create bulb' and st.session_state.get("app_access") == "advanced":
         st.subheader('Export')
         e1, e2 = st.columns(2)
         with e1:
@@ -1038,7 +1038,8 @@ if mesh is not None:
             else:
                 st.button('Print / Save PDF', disabled=True, use_container_width=True)
                 st.caption('Install matplotlib to enable PDF export: python3 -m pip install matplotlib')
-
+    elif mode == 'Create bulb':
+        st.info('PDF and STL downloads are available with Advanced Access.')
     st.subheader('Top and bottom overview')
     verts = mesh.vertices
     top = verts[verts[:,2] >= 0]
