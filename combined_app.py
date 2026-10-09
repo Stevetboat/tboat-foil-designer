@@ -553,11 +553,16 @@ def build_combined_pdf():
         pdf.savefig(f); plt.close(f)
     buf.seek(0); return buf.getvalue()
 
-combined_pdf = build_combined_pdf()
-if combined_pdf is not None:
-    safe_name=''.join(c if c.isalnum() or c in ('-','_') else '_' for c in design_name).strip('_') or 'Combined_Keel_Bulb'
-    st.download_button('Create / download Combined PDF report', data=combined_pdf,
-                       file_name=f'Tboats_{safe_name}.pdf', mime='application/pdf', use_container_width=True)
-    st.caption('Three-page comparison report: dimensioned 2D drawing, geometry/analysis results, and combined 3D view.')
+# Download permissions come from the verified WordPress login in foil_app.py.
+# Standard users can design and analyse, but cannot generate or download reports.
+if st.session_state.get('app_access') == 'advanced':
+    combined_pdf = build_combined_pdf()
+    if combined_pdf is not None:
+        safe_name=''.join(c if c.isalnum() or c in ('-','_') else '_' for c in design_name).strip('_') or 'Combined_Keel_Bulb'
+        st.download_button('Create / download Combined PDF report', data=combined_pdf,
+                           file_name=f'Tboats_{safe_name}.pdf', mime='application/pdf', use_container_width=True)
+        st.caption('Three-page comparison report: dimensioned 2D drawing, geometry/analysis results, and combined 3D view.')
+    else:
+        st.warning('PDF creation needs matplotlib installed in this Python environment.')
 else:
-    st.warning('PDF creation needs matplotlib installed in this Python environment.')
+    st.info('PDF reports and design-file downloads are available with Advanced access. You can continue designing and analysing with Standard access.')
