@@ -17,6 +17,13 @@ except Exception:
 
 st.session_state.setdefault("app_access", "standard")
 st.set_page_config(page_title='Tboats Bulb Analyser', layout='wide')
+st.markdown("""
+<style>
+[data-testid="stFileUploader"] small {
+    display: none !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 LEAD_DENSITY_DEFAULT = 11340.0  # kg/m3
 SEAWATER_DENSITY = 1025.0      # kg/m3
