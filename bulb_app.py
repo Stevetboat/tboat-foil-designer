@@ -19,10 +19,17 @@ st.session_state.setdefault("app_access", "standard")
 st.set_page_config(page_title='Tboats Bulb Analyser', layout='wide')
 st.markdown("""
 <style>
-[data-testid="stFileUploader"] small {
+[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzoneInstructions"] {
+    display: none !important;
+}
+[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"] small {
     display: none !important;
 }
 </style>
+""", unsafe_allow_html=True)
+}
+</style>
+""", unsafe_allow_html=True)
 """, unsafe_allow_html=True)
 
 LEAD_DENSITY_DEFAULT = 11340.0  # kg/m3
