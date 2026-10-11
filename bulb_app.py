@@ -1,4 +1,5 @@
 import io
+import json
 import math
 import numpy as np
 import pandas as pd
@@ -816,11 +817,69 @@ def mesh_figure(mesh, title='Bulb geometry'):
     return fig
 
 
-st.title('Tboats Bulb Analyser — Prototype')
+# File controls stay beside the heading, even though the data is prepared below.
+advanced = str(st.session_state.get('app_access', 'standard')).lower() == 'advanced'
+title_col, download_col, upload_col, pdf_col = st.columns([4.5, 1.2, 1.2, 0.9], vertical_alignment='center')
+with title_col:
+    st.title('Tboat Bulb Designer')
+with download_col:
+    download_slot = st.empty()
+with upload_col:
+    upload_slot = st.empty()
+with pdf_col:
+    pdf_slot = st.empty()
+
+# Upload a saved parametric design. Assign widget keys BEFORE creating widgets.
+# Streamlit reruns the page after the upload, so values appear in the inputs.
+if advanced:
+    with upload_slot.container():
+        uploaded_design = st.file_uploader('Upload', type=['json'], key='bulb_json_upload',
+                                           label_visibility='visible', help='Upload a previously downloaded bulb design JSON file.')
+    if uploaded_design is not None:
+        upload_signature = (uploaded_design.name, uploaded_design.size, uploaded_design.getvalue())
+        if st.session_state.get('_bulb_upload_signature') != upload_signature:
+            try:
+                payload = json.loads(uploaded_design.getvalue().decode('utf-8'))
+                if payload.get('type') != 'tboat_bulb_design' or not isinstance(payload.get('geometry'), dict):
+                    raise ValueError('This is not a Tboat Bulb Designer file.')
+                data = payload['geometry']
+                shape = data.get('shape_mode', 'Symmetric')
+                series = data.get('section_series', '63')
+                if shape not in ('Symmetric', 'Asymmetric') or series not in ('00', '63', '64', '65', '66'):
+                    raise ValueError('Unrecognised bulb shape or section series.')
+                st.session_state['bulb_input_method'] = 'Create bulb'
+                values = {
+                    'bulb_shape': shape, 'bulb_series': series,
+                    'bulb_length': float(data['length_mm']),
+                    'bulb_density': float(data.get('lead_density_kg_m3', LEAD_DENSITY_DEFAULT)),
+                    'bulb_max_pos': float(data.get('max_thickness_pos', 0.30))*100,
+                    'bulb_thickness': float(data.get('thickness_pct') or 13.0),
+                    'bulb_le_factor': float(data.get('le_radius_factor', 1.0)),
+                    'bulb_top': float(data.get('top_pct') or 13.0),
+                    'bulb_bottom': float(data.get('bottom_pct') or 13.0),
+                    'bulb_width': float(data.get('width_mm') or 247.0),
+                    'bulb_tail': int(data.get('beaver_tail_pct') or 0),
+                }
+                ranges = {'bulb_length': (200, 5000), 'bulb_density': (9000, 12000),
+                          'bulb_max_pos': (20, 60), 'bulb_thickness': (5, 30),
+                          'bulb_le_factor': (0.5, 2), 'bulb_top': (2, 30),
+                          'bulb_bottom': (2, 30), 'bulb_width': (50, 1000), 'bulb_tail': (0, 60)}
+                for key, (lo, hi) in ranges.items():
+                    if not lo <= values[key] <= hi:
+                        raise ValueError(f'Invalid value for {key}.')
+                st.session_state.update(values)
+                st.session_state['_bulb_upload_signature'] = upload_signature
+                st.rerun()
+            except (ValueError, KeyError, TypeError) as exc:
+                st.error(f'Could not load bulb design: {exc}')
+else:
+    with upload_slot.container():
+        st.button('Upload', disabled=True, use_container_width=True, help='Available with Advanced Access')
+
 st.caption('Geometry first. Hydrodynamic estimates are preliminary and intended for comparison, not as a replacement for CFD.')
 
-mode = st.radio('Choose input method', ['Upload STL', 'Create bulb'], horizontal=True)
-lead_density = st.number_input('Lead density (kg/m³)', min_value=9000.0, max_value=12000.0, value=LEAD_DENSITY_DEFAULT, step=10.0)
+mode = st.radio('Choose input method', ['Create bulb', 'Upload STL'], horizontal=True, key='bulb_input_method')
+lead_density = st.number_input('Lead density (kg/m³)', min_value=9000.0, max_value=12000.0, value=LEAD_DENSITY_DEFAULT, step=10.0, key='bulb_density')
 mesh = None
 
 if mode == 'Upload STL':
@@ -839,18 +898,18 @@ else:
 
     c1, c2 = st.columns(2)
     with c1:
-        shape_mode = st.radio('Bulb shape', ['Symmetric', 'Asymmetric'], horizontal=True)
+        shape_mode = st.radio('Bulb shape', ['Symmetric', 'Asymmetric'], horizontal=True, key='bulb_shape')
     with c2:
         section_series = st.selectbox(
         'Section series',
         ['00', '63', '64', '65', '66'],
-        index=1,
+        index=1, key='bulb_series',
         help='Select the base section family. 63, 64, 65 and 66 use published 12%-thickness reference ordinate shapes, normalized to your selected thickness.'
     )
     if section_series == '00':
         max_thickness_pos_pct = st.number_input(
             'Position of maximum thickness (% from front)',
-            min_value=20.0, max_value=60.0, value=30.0, step=1.0
+            min_value=20.0, max_value=60.0, value=30.0, step=1.0, key='bulb_max_pos'
         )
         max_thickness_pos = max_thickness_pos_pct / 100.0
     else:
@@ -861,17 +920,17 @@ else:
             else "00-series uses the existing smooth NACA-style section."
         )
 
-    length_mm = st.number_input('Bulb length (mm)', 200.0, 5000.0, 1900.0, 10.0)
+    length_mm = st.number_input('Bulb length (mm)', 200.0, 5000.0, 1900.0, 10.0, key='bulb_length')
 
     if shape_mode == 'Symmetric':
-        thickness_pct = st.number_input('Thickness / diameter (% of bulb length)', 5.0, 30.0, 13.0, 0.5)
+        thickness_pct = st.number_input('Thickness / diameter (% of bulb length)', 5.0, 30.0, 13.0, 0.5, key='bulb_thickness')
         max_diameter_mm = length_mm * thickness_pct / 100.0
 
         t_decimal = thickness_pct / 100.0
         standard_le_pct = standard_le_radius_ratio(t_decimal) * 100.0
         le_radius_factor = st.number_input(
             'LE radius factor (1.00 = standard NACA)',
-            min_value=0.50, max_value=2.00, value=1.00, step=0.05
+            min_value=0.50, max_value=2.00, value=1.00, step=0.05, key='bulb_le_factor'
         )
         le_radius_pct = standard_le_pct * le_radius_factor
         le_radius_mm = length_mm * le_radius_pct / 100.0
@@ -888,14 +947,14 @@ else:
     else:
         c1, c2, c3 = st.columns(3)
         with c1:
-            top_pct = st.number_input('Top thickness (%)', 2.0, 30.0, 13.0, 0.5)
+            top_pct = st.number_input('Top thickness (%)', 2.0, 30.0, 13.0, 0.5, key='bulb_top')
         with c2:
-            bottom_pct = st.number_input('Bottom thickness (%)', 2.0, 30.0, 13.0, 0.5)
+            bottom_pct = st.number_input('Bottom thickness (%)', 2.0, 30.0, 13.0, 0.5, key='bulb_bottom')
         with c3:
-            width_mm = st.number_input('Maximum width (mm)', 50.0, 1000.0, 247.0, 5.0)
+            width_mm = st.number_input('Maximum width (mm)', 50.0, 1000.0, 247.0, 5.0, key='bulb_width')
         thickness_pct = None
         le_radius_factor = 1.0
-        beaver_tail_pct = st.slider('Beaver Tail width at 95% length (% of maximum beam)', 0, 60, 0, 1)
+        beaver_tail_pct = st.slider('Beaver Tail width at 95% length (% of maximum beam)', 0, 60, 0, 1, key='bulb_tail')
         beaver_tail_mm = width_mm * beaver_tail_pct / 100.0
         st.write(f'**Asymmetric bulb — {section_series} section series**')
         st.caption(
@@ -926,6 +985,8 @@ else:
         'bottom_pct': None if bottom_pct is None else float(bottom_pct),
         'width_mm': None if width_mm is None else float(width_mm),
         'beaver_tail_pct': float(beaver_tail_pct),
+        'le_radius_factor': float(le_radius_factor),
+        'lead_density_kg_m3': float(lead_density),
         'profile_x_mm': (_cx * length_mm).tolist(),
         'profile_top_mm': _top.tolist(), 'profile_bottom_mm': _bottom.tolist(),
     }
@@ -945,6 +1006,12 @@ else:
     except Exception as e:
         st.error(str(e))
 
+if mesh is None:
+    with download_slot.container():
+        st.button('Download', disabled=True, use_container_width=True)
+    with pdf_slot.container():
+        st.button('PDF', disabled=True, use_container_width=True)
+
 if mesh is not None:
     m = mesh_metrics(mesh, lead_density)
 
@@ -955,6 +1022,43 @@ if mesh is not None:
         st.session_state['bulb_design']['centroid_z_mm'] = float(mesh.center_mass[2] * 1000.0)
         st.session_state['bulb_design']['lead_density_kg_m3'] = float(lead_density)
         st.session_state['bulb_design']['lead_weight_kg'] = float(abs(mesh.volume) * lead_density)
+
+    # Populate the header controls after the current design and mesh exist.
+    if advanced and mode == 'Create bulb':
+        design_file = {'type': 'tboat_bulb_design', 'version': 1,
+                       'geometry': st.session_state['bulb_design']}
+        with download_slot.container():
+            st.download_button('Download', data=json.dumps(design_file, indent=2),
+                               file_name='Tboat_Bulb_Design.json', mime='application/json',
+                               use_container_width=True)
+        pdf_bytes = build_bulb_pdf(
+            mesh, m, length_mm / 1000.0, shape_mode, max_thickness_pos,
+            thickness_pct=thickness_pct, top_pct=top_pct, bottom_pct=bottom_pct,
+            width_m=(width_mm / 1000.0) if width_mm is not None else None,
+            le_radius_factor=le_radius_factor, beaver_tail_pct=beaver_tail_pct)
+        with pdf_slot.container():
+            if pdf_bytes:
+                st.download_button('PDF', data=pdf_bytes,
+                                   file_name='Tboat_Bulb_Drawing.pdf', mime='application/pdf',
+                                   use_container_width=True)
+            else:
+                st.button('PDF', disabled=True, help='PDF requires matplotlib', use_container_width=True)
+        # Retain the existing manufacturing STL export, now close to the top.
+        with st.expander('Export bulb STL (Advanced)'):
+            export_mesh = mesh.copy()
+            export_mesh.apply_scale(1000.0)
+            stl_bytes = export_mesh.export(file_type='stl')
+            if isinstance(stl_bytes, str):
+                stl_bytes = stl_bytes.encode('utf-8')
+            st.download_button('Export STL', data=stl_bytes, file_name='Tboat_Bulb.stl',
+                               mime='model/stl')
+    else:
+        with download_slot.container():
+            st.button('Download', disabled=True, use_container_width=True,
+                      help='Available for parametric bulbs with Advanced Access')
+        with pdf_slot.container():
+            st.button('PDF', disabled=True, use_container_width=True,
+                      help='Available for parametric bulbs with Advanced Access')
 
     st.subheader('Bulb visualisation')
     view3d, view2d = st.tabs(['3D View', '2D Drawing'])
@@ -1000,47 +1104,6 @@ if mesh is not None:
     st.dataframe(dfm, hide_index=True, use_container_width=True)
     if not m['Watertight']:
         st.warning('This mesh is not watertight. Surface dimensions and area are usable, but volume and lead weight are not reliable.')
-
-    if mode == 'Create bulb' and st.session_state.get('app_access') == 'advanced':
-            st.subheader('Export')
-            e1, e2 = st.columns(2)
-            with e1:
-                export_mesh = mesh.copy()
-                export_mesh.apply_scale(1000.0)  # STL coordinates in millimetres
-                stl_bytes = export_mesh.export(file_type='stl')
-                if isinstance(stl_bytes, str):
-                    stl_bytes = stl_bytes.encode('utf-8')
-                st.download_button(
-                    'Export STL',
-                    data=stl_bytes,
-                    file_name='Tboats_bulb.stl',
-                    mime='model/stl',
-                    use_container_width=True
-                )
-                st.caption('Exports the current bulb as a closed STL with coordinates in millimetres.')
-
-            with e2:
-                pdf_bytes = build_bulb_pdf(
-                    mesh, m, length_mm / 1000.0, shape_mode, max_thickness_pos,
-                    thickness_pct=thickness_pct,
-                    top_pct=top_pct, bottom_pct=bottom_pct,
-                    width_m=(width_mm / 1000.0) if width_mm is not None else None,
-                    le_radius_factor=le_radius_factor, beaver_tail_pct=beaver_tail_pct
-                )
-                if pdf_bytes is not None:
-                    st.download_button(
-                        'Print / Save PDF',
-                        data=pdf_bytes,
-                        file_name='Tboats_bulb_drawing.pdf',
-                        mime='application/pdf',
-                        use_container_width=True
-                    )
-                    st.caption('Creates an A4 landscape drawing using the same stations as the 2D and 3D views.')
-                else:
-                    st.button('Print / Save PDF', disabled=True, use_container_width=True)
-                    st.caption('Install matplotlib to enable PDF export: python3 -m pip install matplotlib')
-    elif mode == 'Create bulb':
-        st.info('PDF and STL downloads are available with Advanced Access.')
 
     st.subheader('Top and bottom overview')
     verts = mesh.vertices
