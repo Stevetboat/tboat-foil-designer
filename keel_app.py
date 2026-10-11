@@ -1,4 +1,5 @@
 import io
+import json
 import math
 import numpy as np
 import pandas as pd
@@ -496,24 +497,85 @@ def make_pdf_report(top_setout, bot_setout, top_chord, bot_chord, top_depth, spa
     buf.seek(0)
     return buf.getvalue()
 
-st.title('Tboats Keel Designer — Prototype')
+# Streamlit page configuration is owned by foil_app.py (the launcher).
+# Stable widget keys also let Advanced users restore a downloaded keel design.
+KEEL_FIELDS = {
+    'top_series': ('63', None, None),
+    'top_chord': (550.0, 100.0, 3000.0),
+    'top_t': (13.0, 5.0, 30.0),
+    'top_setout': (4300.0, 0.0, 20000.0),
+    'top_depth': (280.0, 0.0, 5000.0),
+    'bot_series': ('63', None, None),
+    'bot_chord': (480.0, 100.0, 3000.0),
+    'bot_t': (12.5, 5.0, 30.0),
+    'bot_setout': (4370.0, 0.0, 20000.0),
+    'span': (2070.0, 100.0, 6000.0),
+}
+
+
+def restore_keel_file():
+    uploaded = st.session_state.get('keel_file_upload')
+    if uploaded is None:
+        return
+    try:
+        data = json.load(uploaded)
+        if data.get('type') != 'tboat_keel_design' or not isinstance(data.get('geometry'), dict):
+            raise ValueError('This is not a Tboat keel design file.')
+        geometry = data['geometry']
+        validated = {}
+        for field, (default, lower, upper) in KEEL_FIELDS.items():
+            value = geometry[field]
+            if field.endswith('_series'):
+                if value not in ('00', '63', '64', '65', '66'):
+                    raise ValueError('Unsupported NACA series.')
+            else:
+                value = float(value)
+                if not math.isfinite(value) or not lower <= value <= upper:
+                    raise ValueError(f'Invalid value for {field}.')
+            validated[field] = value
+        for field, value in validated.items():
+            st.session_state['keel_' + field] = value
+        st.session_state['keel_upload_message'] = 'Keel design loaded successfully.'
+    except (ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+        st.session_state['keel_upload_message'] = f'Could not load keel file: {exc}'
+
+
+advanced = st.session_state.get('app_access') == 'advanced'
+heading, save_col, load_col, pdf_col = st.columns([5, 1.4, 1.4, 1.0], vertical_alignment='center')
+with heading:
+    st.title('Tboat Keel Designer')
+with save_col:
+    download_slot = st.empty()
+with load_col:
+    if advanced:
+        with st.popover('Upload', use_container_width=True):
+            st.file_uploader('Upload a keel design (.json)', type=['json'],
+                             key='keel_file_upload', on_change=restore_keel_file)
+    else:
+        st.button('Upload', disabled=True, use_container_width=True,
+                  help='Available with Advanced Access')
+with pdf_col:
+    pdf_slot = st.empty()
+
+if st.session_state.get('keel_upload_message'):
+    st.info(st.session_state.pop('keel_upload_message'))
 st.caption('Linear keel geometry between the top and bottom sections. Top and bottom chord lines are parallel to the LWL.')
 
 c1,c2=st.columns(2)
 with c1:
     st.subheader('Top section')
-    top_series=st.selectbox('Top NACA section series',['00','63','64','65','66'],index=1)
-    top_chord=st.number_input('Top chord (mm)',100.0,3000.0,550.0,10.0)
-    top_t=st.number_input('Top thickness (% chord)',5.0,30.0,13.0,0.5)
-    top_setout=st.number_input('Top forward edge from bow setout (mm)',0.0,20000.0,4300.0,10.0)
-    top_depth=st.number_input('Top section below LWL (mm)',0.0,5000.0,280.0,10.0)
+    top_series=st.selectbox('Top NACA section series',['00','63','64','65','66'],index=1,key='keel_top_series')
+    top_chord=st.number_input('Top chord (mm)',100.0,3000.0,550.0,10.0,key='keel_top_chord')
+    top_t=st.number_input('Top thickness (% chord)',5.0,30.0,13.0,0.5,key='keel_top_t')
+    top_setout=st.number_input('Top forward edge from bow setout (mm)',0.0,20000.0,4300.0,10.0,key='keel_top_setout')
+    top_depth=st.number_input('Top section below LWL (mm)',0.0,5000.0,280.0,10.0,key='keel_top_depth')
 with c2:
     st.subheader('Bottom section')
-    bot_series=st.selectbox('Bottom NACA section series',['00','63','64','65','66'],index=1)
-    bot_chord=st.number_input('Bottom chord (mm)',100.0,3000.0,480.0,10.0)
-    bot_t=st.number_input('Bottom thickness (% chord)',5.0,30.0,12.5,0.5)
-    bot_setout=st.number_input('Bottom forward edge from bow setout (mm)',0.0,20000.0,4370.0,10.0)
-    span=st.number_input('Keel span — top to bottom (mm)',100.0,6000.0,2070.0,10.0)
+    bot_series=st.selectbox('Bottom NACA section series',['00','63','64','65','66'],index=1,key='keel_bot_series')
+    bot_chord=st.number_input('Bottom chord (mm)',100.0,3000.0,480.0,10.0,key='keel_bot_chord')
+    bot_t=st.number_input('Bottom thickness (% chord)',5.0,30.0,12.5,0.5,key='keel_bot_t')
+    bot_setout=st.number_input('Bottom forward edge from bow setout (mm)',0.0,20000.0,4370.0,10.0,key='keel_bot_setout')
+    span=st.number_input('Keel span — top to bottom (mm)',100.0,6000.0,2070.0,10.0,key='keel_span')
 
 # Share the current keel geometry with the combined Keel + Bulb page.
 st.session_state['keel_design'] = {
@@ -592,24 +654,36 @@ with st.expander('Calculation assumptions'):
     st.write('Hull/keel junction, free-surface, heel, ventilation and detailed 3D pressure effects are not included. Use these figures for preliminary comparison rather than final CFD-level prediction.')
 
 
-st.subheader('PDF design report')
-
-if st.session_state.get("app_access") == "advanced":
+# Render the file actions in the reserved slots beside the title.
+# They are populated after the design inputs and hydrodynamic results exist.
+if advanced:
+    design_file = {
+        'type': 'tboat_keel_design',
+        'version': 1,
+        'geometry': st.session_state['keel_design'],
+    }
+    with download_slot.container():
+        st.download_button('Download', json.dumps(design_file, indent=2),
+                           file_name='Tboats_Keel_Design.json',
+                           mime='application/json', use_container_width=True)
     pdf_bytes = make_pdf_report(
         top_setout, bot_setout, top_chord, bot_chord,
         top_depth, span, top_t, bot_t,
         top_series, bot_series, speed_kn, alpha_deg, h
     )
-    if pdf_bytes:
-        st.download_button(
-            'Create / download PDF design report',
-            data=pdf_bytes,
-            file_name='Tboats_Keel_Design_Report.pdf',
-            mime='application/pdf'
-        )
-    else:
-        st.warning('PDF creation needs matplotlib installed.')
+    with pdf_slot.container():
+        if pdf_bytes:
+            st.download_button('PDF', data=pdf_bytes,
+                               file_name='Tboats_Keel_Design_Report.pdf',
+                               mime='application/pdf', use_container_width=True)
+        else:
+            st.button('PDF', disabled=True, help='PDF creation needs matplotlib installed.')
 else:
-    st.info('PDF reports are available with Advanced Access.')
+    with download_slot.container():
+        st.button('Download', disabled=True, use_container_width=True,
+                  help='Available with Advanced Access')
+    with pdf_slot.container():
+        st.button('PDF', disabled=True, use_container_width=True,
+                  help='Available with Advanced Access')
 
 st.info('Next development step: combine the approved keel geometry with the bulb designer and then introduce installed hull/bulb end-plate effects.')
