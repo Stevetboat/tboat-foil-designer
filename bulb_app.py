@@ -837,6 +837,39 @@ def mesh_figure(mesh, title='Bulb geometry'):
     return fig
 
 
+def make_bulb_guide_pdf():
+    """Short downloadable guide, independent of the Advanced export controls."""
+    if not MATPLOTLIB_AVAILABLE:
+        return None
+    import textwrap
+    sections = [
+        ("Getting started", "Choose Create bulb to develop a parametric shape, or Upload STL to inspect a closed 3D bulb mesh. Dimensions are entered in millimetres, and lead density in kg/m3."),
+        ("Symmetric bulb", "Choose a section series, length and thickness/diameter percentage. The transverse sections are circular. The leading-edge radius factor adjusts the nose for the supported parametric shape."),
+        ("Asymmetric bulb", "Set separate top and bottom thickness percentages and maximum beam. The Beaver Tail control specifies beam at 95% of length as a percentage of maximum beam; the app fairs the aft shape."),
+        ("Reviewing the geometry", "Inspect the 3D view and 2D plan, profile and station sections. The drawing uses stations at 0, 5, 20, 35, 50, 65, 80, 95 and 100 percent of bulb length."),
+        ("Weight and hydrodynamics", "Check surface area, volume, lead weight and centroid. The drag table is a preliminary estimate using wetted area and a form factor. Zero-pitch asymmetric lift is a provisional comparison calibrated to 10 kgf at 14 knots for a reference beam, not a CFD result."),
+        ("Advanced: Download and Upload", "Download saves the parametric bulb as a JSON design file. Upload restores a previously downloaded bulb JSON file. These controls are available to Advanced customers."),
+        ("Advanced: PDF and STL", "PDF downloads a bulb drawing with geometry and main dimensions. Export STL provides a mesh for subsequent inspection or manufacture preparation. Check all dimensions independently."),
+        ("Important limitations", "This is a preliminary comparison tool, not a validated CFD or structural analysis. Verify geometry, mass properties, loading, casting allowances and attachments before manufacture."),
+    ]
+    buf = io.BytesIO()
+    with PdfPages(buf) as pdf:
+        fig = plt.figure(figsize=(8.27, 11.69))
+        fig.text(0.09, 0.95, 'Tboats Bulb Designer — User Guide', fontsize=17, weight='bold', va='top')
+        y = 0.895
+        for heading, paragraph in sections:
+            fig.text(0.09, y, heading, fontsize=11.5, weight='bold', va='top')
+            y -= 0.025
+            for line in textwrap.wrap(paragraph, width=92):
+                fig.text(0.09, y, line, fontsize=9.2, va='top')
+                y -= 0.019
+            y -= 0.022
+        fig.text(0.09, 0.045, 'Tboats • Preliminary design tool • tboat.com', fontsize=8)
+        pdf.savefig(fig)
+        plt.close(fig)
+    return buf.getvalue()
+
+
 # File controls stay beside the heading, even though the data is prepared below.
 advanced = str(st.session_state.get('app_access', 'standard')).lower() == 'advanced'
 title_col, download_col, upload_col, pdf_col = st.columns([4.5, 1.2, 1.2, 0.9], vertical_alignment='center')
@@ -849,14 +882,24 @@ with upload_col:
 with pdf_col:
     pdf_slot = st.empty()
 
-# In-app navigation sits directly below the designer heading.
-nav_a, nav_b, nav_c = st.columns(3)
+# Match the Keel Designer: navigation and Guide on one row.
+nav_a, nav_b, nav_c, guide_column = st.columns([1.5, 1.5, 1.5, 1.0], vertical_alignment='center')
 with nav_a:
-    st.page_link("keel_app.py", label="Keel Design", use_container_width=True)
+    st.page_link('keel_app.py', label='Keel Design', use_container_width=True)
 with nav_b:
-    st.page_link("bulb_app.py", label="Bulb Design", use_container_width=True)
+    st.page_link('bulb_app.py', label='Bulb Design', use_container_width=True)
 with nav_c:
-    st.page_link("combined_app.py", label="Keel + Bulb", use_container_width=True)
+    st.page_link('combined_app.py', label='Keel + Bulb', use_container_width=True)
+with guide_column:
+    guide_pdf = make_bulb_guide_pdf()
+    if guide_pdf:
+        st.download_button('Guide', data=guide_pdf,
+                           file_name='Tboats_Bulb_Designer_Guide.pdf',
+                           mime='application/pdf', use_container_width=True,
+                           key='bulb_guide_download')
+    else:
+        with st.popover('Guide', use_container_width=True):
+            st.write('Choose Create bulb or Upload STL, inspect geometry and preliminary hydrodynamic results. Advanced access enables design and PDF downloads.')
 
 st.caption(f"Signed in: {st.session_state.get('customer_email', '')}  •  Access: {st.session_state.get('app_access', '').title()}")
 
