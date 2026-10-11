@@ -540,40 +540,6 @@ def restore_keel_file():
         st.session_state['keel_upload_message'] = f'Could not load keel file: {exc}'
 
 
-def make_keel_guide_pdf():
-    """Downloadable user guide using the existing PDF dependency."""
-    if not MATPLOTLIB_AVAILABLE:
-        return None
-    import textwrap
-    sections = [
-        ("Getting started", "Enter the top and bottom keel geometry. The default dimensions provide a working example. Dimensions are in millimetres, measured relative to the bow setout line and the load waterline (LWL)."),
-        ("Keel geometry", "Select the NACA section family, chord, thickness percentage and forward-edge setout for each end. Enter the top-section depth below LWL and the span from top to bottom. The app interpolates linearly between the two sections."),
-        ("Checking the shape", "Review the side elevation, top and bottom section drawings and the rotatable 3D keel surface. Check the aft-edge difference and overall draft before using the design elsewhere."),
-        ("Hydrodynamic estimate", "Set boat speed, angle of attack (leeway) and, if required, the span-efficiency factor. The results show preliminary lift, profile drag, induced drag, total drag and lift-to-drag ratio."),
-        ("Advanced: Download", "Download saves a JSON design file containing the current keel geometry. Keep this file to continue work later or use the geometry in the combined Keel + Bulb designer."),
-        ("Advanced: Upload", "Open Upload and select a previously downloaded Tboats Keel Design JSON file. Its geometry will restore the input fields. Confirm the values after loading."),
-        ("Advanced: PDF", "PDF downloads a two-page keel design report with geometry, sections and hydrodynamic estimates."),
-        ("Important limitations", "These are preliminary comparison calculations, not CFD or a structural design. The keel-only model does not include hull and bulb end-plate effects, heel, ventilation or detailed junction flow. Independently verify dimensions, loads and construction before manufacture."),
-    ]
-    buf = io.BytesIO()
-    with PdfPages(buf) as pdf:
-        fig = plt.figure(figsize=(8.27, 11.69))
-        fig.text(0.09, 0.95, "Tboats Keel Designer — User Guide", fontsize=17, weight='bold', va='top')
-        y = 0.895
-        for title, paragraph in sections:
-            fig.text(0.09, y, title, fontsize=11.5, weight='bold', va='top')
-            y -= 0.025
-            lines = textwrap.wrap(paragraph, width=92)
-            for line in lines:
-                fig.text(0.09, y, line, fontsize=9.2, va='top')
-                y -= 0.019
-            y -= 0.022
-        fig.text(0.09, 0.045, "Tboats • Preliminary design tool • tboat.com", fontsize=8)
-        pdf.savefig(fig)
-        plt.close(fig)
-    return buf.getvalue()
-
-
 advanced = st.session_state.get('app_access') == 'advanced'
 heading, save_col, load_col, pdf_col = st.columns([5, 1.4, 1.4, 1.0], vertical_alignment='center')
 with heading:
@@ -591,19 +557,14 @@ with load_col:
 with pdf_col:
     pdf_slot = st.empty()
 
-# Keep the Guide available to Standard and Advanced customers.
-# It is independent of the paid design export controls.
-_, guide_column = st.columns([6.9, 1.0])
-with guide_column:
-    guide_pdf = make_keel_guide_pdf()
-    if guide_pdf:
-        st.download_button('Guide', data=guide_pdf,
-                           file_name='Tboats_Keel_Designer_Guide.pdf',
-                           mime='application/pdf', use_container_width=True,
-                           key='keel_guide_download')
-    else:
-        with st.popover('Guide', use_container_width=True):
-            st.write('Enter top and bottom keel geometry, inspect the drawings and 3D model, then compare lift and drag. Advanced access enables design file Download/Upload and PDF export.')
+# In-app navigation sits directly below the designer heading.
+nav_a, nav_b, nav_c = st.columns(3)
+with nav_a:
+    st.page_link("keel_app.py", label="Keel Design", use_container_width=True)
+with nav_b:
+    st.page_link("bulb_app.py", label="Bulb Design", use_container_width=True)
+with nav_c:
+    st.page_link("combined_app.py", label="Keel + Bulb", use_container_width=True)
 
 if st.session_state.get('keel_upload_message'):
     st.info(st.session_state.pop('keel_upload_message'))
