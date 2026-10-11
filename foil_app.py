@@ -78,23 +78,10 @@ if not st.session_state.app_access:
     st.link_button("Sign in to Tboats", WORDPRESS_ACCOUNT_URL)
     st.stop()
 
-c1, c2, c3 = st.columns([5, 1.5, 1.5])
-with c1:
-    st.caption(f"Signed in: {st.session_state.customer_email}  •  Access: {st.session_state.app_access.title()}")
-with c2:
-    if st.button("Check access", use_container_width=True,
-                 help="Use this after upgrading to Advanced. Your current design is retained."):
-        refreshed = refresh_wordpress_access(st.session_state.customer_email)
-        if refreshed:
-            st.session_state.app_access = refreshed
-            st.rerun()
-        else:
-            st.error("Access could not be checked.")
-with c3:
-    if st.button("Sign out", use_container_width=True):
-        st.session_state.app_access = None
-        st.session_state.customer_email = ""
-        st.rerun()
+st.caption(
+    f"Signed in: {st.session_state.customer_email}  •  "
+    f"Access: {st.session_state.app_access.title()}"
+)
 
 keel = st.Page("keel_app.py", title="Keel Design", icon=":material/straighten:", default=True)
 bulb = st.Page("bulb_app.py", title="Bulb Design", icon=":material/egg_alt:")
