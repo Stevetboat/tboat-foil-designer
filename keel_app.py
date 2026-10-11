@@ -496,7 +496,6 @@ def make_pdf_report(top_setout, bot_setout, top_chord, bot_chord, top_depth, spa
     buf.seek(0)
     return buf.getvalue()
 
-st.set_page_config(page_title='Tboats Keel Designer', layout='wide')
 st.title('Tboats Keel Designer — Prototype')
 st.caption('Linear keel geometry between the top and bottom sections. Top and bottom chord lines are parallel to the LWL.')
 
