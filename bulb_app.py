@@ -641,7 +641,9 @@ def bulb_2d_figure(length_m, shape_mode, max_thickness_pos, thickness_pct=None,
 
 def build_bulb_pdf(mesh, metrics, length_m, shape_mode, max_thickness_pos,
                    thickness_pct=None, top_pct=None, bottom_pct=None,
-                   width_m=None, le_radius_factor=1.0, beaver_tail_pct=0.0):
+                   width_m=None, le_radius_factor=1.0, beaver_tail_pct=0.0,
+                   section_series='63', lead_density=11340.0, drag_results=None,
+                   form_factor=1.15):
     """Create a clean PDF design record. Returns bytes or None if matplotlib is unavailable."""
     if not MATPLOTLIB_AVAILABLE:
         return None
@@ -714,6 +716,97 @@ def build_bulb_pdf(mesh, metrics, length_m, shape_mode, max_thickness_pos,
         fig.text(0.06, 0.035, metric_text, fontsize=9)
         pdf.savefig(fig)
         plt.close(fig)
+
+        # Page 2: geometry and design inputs, using the same values as the app.
+        fig = plt.figure(figsize=(11.69, 8.27))
+        fig.text(0.07, 0.93, 'Tboat Bulb Designer — Geometry & Design', fontsize=17, weight='bold')
+        rows = [
+            ('Bulb shape', shape_mode),
+            ('Section series', str(section_series)),
+            ('Bulb length', f'{length_m*1000:.1f} mm'),
+            ('Position of maximum thickness', f'{max_thickness_pos*100:.1f}% of length'),
+        ]
+        if shape_mode == 'Symmetric':
+            rows += [
+                ('Thickness / diameter', f'{thickness_pct:.1f}% of length'),
+                ('LE radius factor', f'{le_radius_factor:.2f}'),
+            ]
+        else:
+            rows += [
+                ('Top thickness', f'{top_pct:.1f}%'),
+                ('Bottom thickness', f'{bottom_pct:.1f}%'),
+                ('Specified maximum beam', f'{width_m*1000:.1f} mm'),
+                ('Beaver Tail beam at 95% length', f'{beaver_tail_pct:.0f}% of maximum beam'),
+            ]
+        rows += [
+            ('Lead density', f'{lead_density:,.1f} kg/m³'),
+            ('Measured length', f"{metrics['Length (mm)']:.1f} mm"),
+            ('Measured maximum width', f"{metrics['Width (mm)']:.1f} mm"),
+            ('Measured maximum depth', f"{metrics['Depth (mm)']:.1f} mm"),
+            ('Surface area', f"{metrics['Surface area (m²)']:.4f} m²"),
+            ('Volume', f"{metrics['Volume (m³)']:.5f} m³"),
+            ('Lead weight', f"{metrics['Lead weight (kg)']:.1f} kg"),
+            ('Longitudinal centroid from nose', f"{metrics['Centroid X (mm)']:.1f} mm"),
+            ('Watertight mesh', 'Yes' if metrics['Watertight'] else 'No'),
+        ]
+        y = 0.85
+        for i, (label, value) in enumerate(rows):
+            if i % 2 == 0:
+                fig.patches.append(plt.Rectangle((0.065, y-0.013), 0.87, 0.035,
+                                                 transform=fig.transFigure, color='#f0f3f5'))
+            fig.text(0.085, y, label, fontsize=10, va='center')
+            fig.text(0.58, y, value, fontsize=10, va='center')
+            y -= 0.041
+        fig.text(0.07, 0.045, 'Geometry and mass are calculated from the generated bulb mesh.', fontsize=9)
+        pdf.savefig(fig)
+        plt.close(fig)
+
+        # Page 3: hydrodynamics, including the actual on-screen speed sweep.
+        if drag_results is not None and not drag_results.empty:
+            fig = plt.figure(figsize=(11.69, 8.27))
+            fig.text(0.07, 0.93, 'Tboat Bulb Designer — Preliminary Hydrodynamics',
+                     fontsize=17, weight='bold')
+            fig.text(0.07, 0.875,
+                     f'Form factor: {form_factor:.2f}   |   Seawater density: {SEAWATER_DENSITY:.0f} kg/m³'
+                     f'   |   Kinematic viscosity: {SEAWATER_NU:.2e} m²/s', fontsize=9)
+            ax = fig.add_axes([0.10, 0.49, 0.80, 0.31])
+            ax.plot(drag_results['Speed (kn)'], drag_results['Estimated total drag (kgf)'],
+                    marker='o', lw=1.8)
+            ax.set_xlabel('Speed (knots)')
+            ax.set_ylabel('Estimated total drag (kgf)')
+            ax.set_title('Estimated bulb drag versus speed', fontsize=11)
+            ax.grid(True, alpha=0.3)
+
+            headings = ['Speed (kn)', 'Re', 'Cf', 'Friction (N)',
+                        'Drag (N)', 'Drag (kgf)', 'Lift 0° (N)', 'Lift 0° (kgf)']
+            columns = ['Speed (kn)', 'Reynolds number', 'Cf', 'Skin friction (N)',
+                       'Estimated total drag (N)', 'Estimated total drag (kgf)',
+                       'Estimated lift at 0° (N)', 'Estimated lift at 0° (kgf)']
+            formats = ['.1f', '.2e', '.5f', '.2f', '.2f', '.2f', '.2f', '.2f']
+            data = []
+            for _, rec in drag_results.iterrows():
+                data.append([format(float(rec[col]), fmt) for col, fmt in zip(columns, formats)])
+            ax_table = fig.add_axes([0.055, 0.20, 0.89, 0.24])
+            ax_table.axis('off')
+            table = ax_table.table(cellText=data, colLabels=headings, loc='center',
+                                   cellLoc='center', colLoc='center')
+            table.auto_set_font_size(False)
+            table.set_fontsize(7.1)
+            table.scale(1.0, 1.23)
+            fig.text(0.07, 0.12,
+                     'Drag: wetted-area friction estimate multiplied by the selected form factor.',
+                     fontsize=8.5)
+            fig.text(0.07, 0.09,
+                     'Lift: provisional zero-pitch comparison; symmetric bulb = zero lift.',
+                     fontsize=8.5)
+            fig.text(0.07, 0.065,
+                     'Asymmetric lift uses a 10 kgf reference at 14 kn for 100 mm beam, scaled by beam and speed².',
+                     fontsize=8.2)
+            fig.text(0.07, 0.035,
+                     'Preliminary estimates only — not CFD or a validated complete keel/bulb prediction.',
+                     fontsize=8.5, style='italic')
+            pdf.savefig(fig)
+            plt.close(fig)
 
     buf.seek(0)
     return buf.getvalue()
@@ -1105,18 +1198,7 @@ if mesh is not None:
             st.download_button('Download', data=json.dumps(design_file, indent=2),
                                file_name='Tboat_Bulb_Design.json', mime='application/json',
                                use_container_width=True)
-        pdf_bytes = build_bulb_pdf(
-            mesh, m, length_mm / 1000.0, shape_mode, max_thickness_pos,
-            thickness_pct=thickness_pct, top_pct=top_pct, bottom_pct=bottom_pct,
-            width_m=(width_mm / 1000.0) if width_mm is not None else None,
-            le_radius_factor=le_radius_factor, beaver_tail_pct=beaver_tail_pct)
-        with pdf_slot.container():
-            if pdf_bytes:
-                st.download_button('PDF', data=pdf_bytes,
-                                   file_name='Tboat_Bulb_Drawing.pdf', mime='application/pdf',
-                                   use_container_width=True)
-            else:
-                st.button('PDF', disabled=True, help='PDF requires matplotlib', use_container_width=True)
+        # The PDF is generated after the drag/lift table is calculated below.
         # Retain the existing manufacturing STL export, now close to the top.
         with st.expander('Export bulb STL (Advanced)'):
             export_mesh = mesh.copy()
@@ -1232,5 +1314,23 @@ if mesh is not None:
     fig.add_trace(go.Scatter(x=dfd['Speed (kn)'], y=dfd['Estimated total drag (kgf)'], mode='lines+markers', name='Estimated drag'))
     fig.update_layout(xaxis_title='Speed (knots)', yaxis_title='Drag (kgf)', title='Estimated bulb drag vs speed')
     st.plotly_chart(fig, use_container_width=True)
+
+    # Render the PDF button in the original header slot, using all current results.
+    if advanced and mode == 'Create bulb':
+        pdf_bytes = build_bulb_pdf(
+            mesh, m, length_mm / 1000.0, shape_mode, max_thickness_pos,
+            thickness_pct=thickness_pct, top_pct=top_pct, bottom_pct=bottom_pct,
+            width_m=(width_mm / 1000.0) if width_mm is not None else None,
+            le_radius_factor=le_radius_factor, beaver_tail_pct=beaver_tail_pct,
+            section_series=section_series, lead_density=lead_density,
+            drag_results=dfd, form_factor=form_factor)
+        with pdf_slot.container():
+            if pdf_bytes:
+                st.download_button('PDF', data=pdf_bytes,
+                                   file_name='Tboat_Bulb_Report.pdf',
+                                   mime='application/pdf', use_container_width=True)
+            else:
+                st.button('PDF', disabled=True, use_container_width=True,
+                          help='PDF requires matplotlib')
 
     st.info('Next planned additions: keel geometry, combined keel + bulb analysis, angle-of-attack sweep, heel, leeway, and side-by-side comparison.')
