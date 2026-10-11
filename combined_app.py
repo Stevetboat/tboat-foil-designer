@@ -1,4 +1,5 @@
 import io
+import json
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -12,7 +13,71 @@ except Exception:
     MATPLOTLIB_AVAILABLE = False
 
 st.set_page_config(page_title='Tboats Keel + Bulb', layout='wide')
-st.title('Tboats Keel + Bulb Designer')
+# File actions are displayed in the heading but populated after calculations.
+advanced = st.session_state.get('app_access') == 'advanced'
+heading, download_col, upload_col, pdf_col = st.columns([4.5, 1.2, 1.2, 0.9], vertical_alignment='center')
+with heading:
+    st.title('Tboat Keel + Bulb Designer')
+with download_col:
+    download_slot = st.empty()
+with upload_col:
+    if advanced:
+        with st.popover('Upload', use_container_width=True):
+            uploaded_combined = st.file_uploader('Upload a saved combined design', type=['json'], key='combined_file_upload')
+    else:
+        st.button('Upload', disabled=True, use_container_width=True)
+        uploaded_combined = None
+with pdf_col:
+    pdf_slot = st.empty()
+
+nav_a, nav_b, nav_c, guide_col = st.columns([1.5, 1.5, 1.5, 1.0], vertical_alignment='center')
+with nav_a:
+    st.page_link('keel_app.py', label='Keel Design', use_container_width=True)
+with nav_b:
+    st.page_link('bulb_app.py', label='Bulb Design', use_container_width=True)
+with nav_c:
+    st.page_link('combined_app.py', label='Keel + Bulb', use_container_width=True)
+with guide_col:
+    if MATPLOTLIB_AVAILABLE:
+        guide_buffer = io.BytesIO()
+        with PdfPages(guide_buffer) as guide_doc:
+            page = plt.figure(figsize=(8.27, 11.69))
+            page.suptitle('Tboat Keel + Bulb Designer — Guide', fontsize=17, y=.95)
+            guide_text = (
+                'PURPOSE\n'
+                'Combine the current keel and bulb designs into one installation.\n'
+                'A default design appears until you create or load your own components.\n\n'
+                'WORKFLOW\n'
+                '1. Set the keel geometry in Keel Design.\n'
+                '2. Set the bulb geometry in Bulb Design.\n'
+                '3. Return to Keel + Bulb to position the bulb beneath the keel.\n'
+                '4. Adjust bulb bottom draft and bulb leading-edge setout.\n'
+                '5. Check the dimensioned side elevation and 3D view.\n'
+                '6. Compare lift, drag, centres of volume and righting moment.\n\n'
+                'POSITIONING INPUTS\n'
+                'Bulb bottom draft: vertical distance below the load waterline (mm).\n'
+                'Bulb leading-edge setout: distance aft from bow setout datum (mm).\n'
+                'Overlap and gap colouring is a positioning aid only.\n\n'
+                'ADVANCED FILES\n'
+                'Download: saves combined keel, bulb and positioning data as JSON.\n'
+                'Upload: restores a previously downloaded combined JSON design.\n'
+                'PDF: generates a three-page comparison report.\n'
+                'Standard access permits on-screen design without file downloads.\n\n'
+                'CALCULATION LIMITATIONS\n'
+                'Hydrodynamic results are preliminary comparisons, not CFD.\n'
+                'Righting moment is ballast-only; hull, rig and crew are excluded.\n'
+                'Check all dimensions and engineering independently before manufacture.'
+            )
+            page.text(.09, .88, guide_text, va='top', fontsize=10, linespacing=1.55)
+            guide_doc.savefig(page)
+            plt.close(page)
+        st.download_button('Guide', guide_buffer.getvalue(), file_name='Tboat_Keel_Bulb_Guide.pdf',
+                           mime='application/pdf', use_container_width=True)
+    else:
+        with st.popover('Guide', use_container_width=True):
+            st.write('Design the keel and bulb separately, then position them here. Check 2D/3D views, analysis and righting moment. Advanced users can save JSON and PDF reports.')
+
+st.caption(f"Signed in: {st.session_state.get('customer_email', '')}  •  Access: {str(st.session_state.get('app_access', '')).title()}")
 st.caption('Uses the current Keel Design and Bulb Design. A saved default keel and bulb are loaded automatically so the combined drawing is always available.')
 
 # Saved default keel — same geometry as the Keel Designer defaults.
@@ -37,6 +102,42 @@ def _default_bulb():
         'profile_x_mm':(x*L).tolist(),'profile_top_mm':yt.tolist(),'profile_bottom_mm':yt.tolist(),
     }
 
+# Restore only a validated Tboat combined design. Preserve existing component data on failure.
+if advanced and uploaded_combined is not None:
+    raw = uploaded_combined.getvalue()
+    signature = (uploaded_combined.name, raw)
+    if st.session_state.get('_combined_loaded_file') != signature:
+        try:
+            saved = json.loads(raw.decode('utf-8'))
+            if saved.get('type') != 'tboat_combined_design' or saved.get('version') != 1:
+                raise ValueError('This is not a supported Tboat combined design file.')
+            saved_keel, saved_bulb = saved['keel'], saved['bulb']
+            keel_fields = ('top_series','top_chord','top_t','top_setout','top_depth','bot_series','bot_chord','bot_t','bot_setout','span')
+            bulb_fields = ('length_mm','profile_x_mm','profile_top_mm','profile_bottom_mm')
+            if not isinstance(saved_keel, dict) or not all(k in saved_keel for k in keel_fields):
+                raise ValueError('Keel data is incomplete.')
+            if not isinstance(saved_bulb, dict) or not all(k in saved_bulb for k in bulb_fields):
+                raise ValueError('Bulb data is incomplete.')
+            draft = float(saved['bulb_bottom_draft_mm'])
+            setout = float(saved['bulb_le_setout_mm'])
+            if not 500 <= draft <= 10000 or not 0 <= setout <= 20000:
+                raise ValueError('Bulb positioning is outside the supported range.')
+            for key in keel_fields:
+                if key not in ('top_series','bot_series'):
+                    float(saved_keel[key])
+            for key in bulb_fields:
+                if key != 'length_mm':
+                    if not isinstance(saved_bulb[key], list) or len(saved_bulb[key]) < 2:
+                        raise ValueError('Bulb profile is invalid.')
+            st.session_state['keel_design'] = saved_keel
+            st.session_state['bulb_design'] = saved_bulb
+            st.session_state['combined_bulb_bottom_draft'] = draft
+            st.session_state['combined_bulb_le_setout'] = setout
+            st.session_state['_combined_loaded_file'] = signature
+            st.success('Combined design loaded.')
+        except (KeyError, ValueError, TypeError, UnicodeDecodeError, OverflowError) as exc:
+            st.error(f'Unable to load combined design: {exc}')
+
 if 'keel_design' not in st.session_state:
     st.session_state['keel_design']=default_keel.copy()
 if 'bulb_design' not in st.session_state:
@@ -48,9 +149,11 @@ bulb=st.session_state['bulb_design']
 c1,c2=st.columns(2)
 with c1:
     bulb_bottom_draft=st.number_input('Bulb bottom draft below LWL (mm)',500.0,10000.0,2597.0,1.0,
+        key='combined_bulb_bottom_draft',
         help='Vertical distance from LWL to the lowest point of the bulb.')
 with c2:
     bulb_le_setout=st.number_input('Bulb leading edge from bow setout (mm)',0.0,20000.0,3850.0,10.0,
+        key='combined_bulb_le_setout',
         help='Horizontal distance aft from the bow setout line to the bulb leading edge.')
 
 # Keel geometry
@@ -553,16 +656,28 @@ def build_combined_pdf():
         pdf.savefig(f); plt.close(f)
     buf.seek(0); return buf.getvalue()
 
-# Download permissions come from the verified WordPress login in foil_app.py.
-# Standard users can design and analyse, but cannot generate or download reports.
-if st.session_state.get('app_access') == 'advanced':
-    combined_pdf = build_combined_pdf()
-    if combined_pdf is not None:
-        safe_name=''.join(c if c.isalnum() or c in ('-','_') else '_' for c in design_name).strip('_') or 'Combined_Keel_Bulb'
-        st.download_button('Create / download Combined PDF report', data=combined_pdf,
-                           file_name=f'Tboats_{safe_name}.pdf', mime='application/pdf', use_container_width=True)
-        st.caption('Three-page comparison report: dimensioned 2D drawing, geometry/analysis results, and combined 3D view.')
-    else:
-        st.warning('PDF creation needs matplotlib installed in this Python environment.')
+# Complete the header actions using the current live design and calculated report.
+if advanced:
+    saved_design = {
+        'type': 'tboat_combined_design', 'version': 1,
+        'keel': keel, 'bulb': bulb,
+        'bulb_bottom_draft_mm': float(bulb_bottom_draft),
+        'bulb_le_setout_mm': float(bulb_le_setout),
+    }
+    with download_slot.container():
+        st.download_button('Download', data=json.dumps(saved_design, indent=2),
+                           file_name='Tboat_Keel_Bulb_Design.json', mime='application/json',
+                           use_container_width=True)
+    report = build_combined_pdf()
+    with pdf_slot.container():
+        if report is not None:
+            safe_name = ''.join(c if c.isalnum() or c in ('-', '_') else '_' for c in design_name).strip('_') or 'Keel_Bulb'
+            st.download_button('PDF', data=report, file_name=f'Tboat_{safe_name}.pdf',
+                               mime='application/pdf', use_container_width=True)
+        else:
+            st.button('PDF', disabled=True, help='PDF creation requires matplotlib.', use_container_width=True)
 else:
-    st.info('PDF reports and design-file downloads are available with Advanced access. You can continue designing and analysing with Standard access.')
+    with download_slot.container():
+        st.button('Download', disabled=True, help='Available with Advanced access.', use_container_width=True)
+    with pdf_slot.container():
+        st.button('PDF', disabled=True, help='Available with Advanced access.', use_container_width=True)
