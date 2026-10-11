@@ -1041,7 +1041,10 @@ if advanced:
                 st.error(f'Could not load bulb design: {exc}')
 else:
     with upload_slot.container():
-        st.button('Upload', disabled=True, use_container_width=True, help='Available with Advanced Access')
+        with st.popover('Upload', use_container_width=True):
+            st.write('Upgrade to Advanced Access for NZ$30 for 12 months to download PDFs, save designs and upload saved files.')
+            st.link_button('Upgrade to Advanced', 'https://tboat.com/?add-to-cart=10349', use_container_width=True)
+
 
 st.caption('Geometry first. Hydrodynamic estimates are preliminary and intended for comparison, not as a replacement for CFD.')
 
@@ -1210,11 +1213,19 @@ if mesh is not None:
                                mime='model/stl')
     else:
         with download_slot.container():
-            st.button('Download', disabled=True, use_container_width=True,
-                      help='Available for parametric bulbs with Advanced Access')
+            if not advanced and mode == 'Create bulb':
+                with st.popover('Download', use_container_width=True):
+                    st.write('Upgrade to Advanced Access for NZ$30 for 12 months to download PDFs, save designs and upload saved files.')
+                    st.link_button('Upgrade to Advanced', 'https://tboat.com/?add-to-cart=10349', use_container_width=True)
+            else:
+                st.button('Download', disabled=True, use_container_width=True, help='Only available for parametric bulbs')
         with pdf_slot.container():
-            st.button('PDF', disabled=True, use_container_width=True,
-                      help='Available for parametric bulbs with Advanced Access')
+            if not advanced and mode == 'Create bulb':
+                with st.popover('PDF', use_container_width=True):
+                    st.write('Upgrade to Advanced Access for NZ$30 for 12 months to download PDFs, save designs and upload saved files.')
+                    st.link_button('Upgrade to Advanced', 'https://tboat.com/?add-to-cart=10349', use_container_width=True)
+            else:
+                st.button('PDF', disabled=True, use_container_width=True, help='Only available for parametric bulbs')
 
     st.subheader('Bulb visualisation')
     view3d, view2d = st.tabs(['3D View', '2D Drawing'])
