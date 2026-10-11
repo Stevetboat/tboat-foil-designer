@@ -17,20 +17,26 @@ except Exception:
 
 st.session_state.setdefault("app_access", "standard")
 st.set_page_config(page_title='Tboats Bulb Analyser', layout='wide')
-st.markdown("""
-<style>
-[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzoneInstructions"] {
-    display: none !important;
-}
-[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"] small {
-    display: none !important;
-}
-</style>
-""", unsafe_allow_html=True)
-}
-</style>
-""", unsafe_allow_html=True)
-""", unsafe_allow_html=True)
+
+# Keep the JSON upload control compact in the title row.
+# Hide Streamlit's drop-zone instructions and file-size hint, not the browse button.
+st.markdown(
+    """
+    <style>
+    [data-testid="stFileUploader"] [data-testid="stFileUploaderDropzoneInstructions"] {
+        display: none !important;
+    }
+    [data-testid="stFileUploader"] > label {
+        display: none !important;
+    }
+    [data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"] {
+        padding: 0.25rem !important;
+        min-height: 0 !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 LEAD_DENSITY_DEFAULT = 11340.0  # kg/m3
 SEAWATER_DENSITY = 1025.0      # kg/m3
