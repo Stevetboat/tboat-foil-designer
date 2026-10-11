@@ -78,11 +78,6 @@ if not st.session_state.app_access:
     st.link_button("Sign in to Tboats", WORDPRESS_ACCOUNT_URL)
     st.stop()
 
-st.caption(
-    f"Signed in: {st.session_state.customer_email}  •  "
-    f"Access: {st.session_state.app_access.title()}"
-)
-
 keel = st.Page("keel_app.py", title="Keel Design", icon=":material/straighten:", default=True)
 bulb = st.Page("bulb_app.py", title="Bulb Design", icon=":material/egg_alt:")
 combined = st.Page("combined_app.py", title="Keel + Bulb", icon=":material/join:")
