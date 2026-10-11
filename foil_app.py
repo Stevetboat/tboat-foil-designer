@@ -86,5 +86,5 @@ st.caption(
 keel = st.Page("keel_app.py", title="Keel Design", icon=":material/straighten:", default=True)
 bulb = st.Page("bulb_app.py", title="Bulb Design", icon=":material/egg_alt:")
 combined = st.Page("combined_app.py", title="Keel + Bulb", icon=":material/join:")
-pg = st.navigation([keel, bulb, combined], position="top")
+pg = st.navigation([keel, bulb, combined], position="hidden")
 pg.run()
