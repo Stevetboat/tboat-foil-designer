@@ -849,6 +849,17 @@ with upload_col:
 with pdf_col:
     pdf_slot = st.empty()
 
+# In-app navigation sits directly below the designer heading.
+nav_a, nav_b, nav_c = st.columns(3)
+with nav_a:
+    st.page_link("keel_app.py", label="Keel Design", use_container_width=True)
+with nav_b:
+    st.page_link("bulb_app.py", label="Bulb Design", use_container_width=True)
+with nav_c:
+    st.page_link("combined_app.py", label="Keel + Bulb", use_container_width=True)
+
+st.caption(f"Signed in: {st.session_state.get('customer_email', '')}  •  Access: {st.session_state.get('app_access', '').title()}")
+
 # Upload a saved parametric design. Assign widget keys BEFORE creating widgets.
 # Streamlit reruns the page after the upload, so values appear in the inputs.
 if advanced:
