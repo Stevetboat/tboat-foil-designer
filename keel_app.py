@@ -586,8 +586,10 @@ with load_col:
             st.file_uploader('Upload a keel design (.json)', type=['json'],
                              key='keel_file_upload', on_change=restore_keel_file)
     else:
-        st.button('Upload', disabled=True, use_container_width=True,
-                  help='Available with Advanced Access')
+        with st.popover('Upload', use_container_width=True):
+            st.write('Upgrade to Advanced Access for NZ$30 for 12 months to download PDFs, save designs and upload saved files.')
+            st.link_button('Upgrade to Advanced', 'https://tboat.com/?add-to-cart=10349', use_container_width=True)
+
 with pdf_col:
     pdf_slot = st.empty()
 
@@ -735,10 +737,14 @@ if advanced:
             st.button('PDF', disabled=True, help='PDF creation needs matplotlib installed.')
 else:
     with download_slot.container():
-        st.button('Download', disabled=True, use_container_width=True,
-                  help='Available with Advanced Access')
+        with st.popover('Download', use_container_width=True):
+            st.write('Upgrade to Advanced Access for NZ$30 for 12 months to download PDFs, save designs and upload saved files.')
+            st.link_button('Upgrade to Advanced', 'https://tboat.com/?add-to-cart=10349', use_container_width=True)
+
     with pdf_slot.container():
-        st.button('PDF', disabled=True, use_container_width=True,
-                  help='Available with Advanced Access')
+        with st.popover('PDF', use_container_width=True):
+            st.write('Upgrade to Advanced Access for NZ$30 for 12 months to download PDFs, save designs and upload saved files.')
+            st.link_button('Upgrade to Advanced', 'https://tboat.com/?add-to-cart=10349', use_container_width=True)
+
 
 st.info('Next development step: combine the approved keel geometry with the bulb designer and then introduce installed hull/bulb end-plate effects.')
