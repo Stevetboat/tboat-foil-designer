@@ -272,11 +272,19 @@ SEAWATER_DENSITY = 1025.0
 SEAWATER_NU = 1.05e-6
 G = 9.80665
 
-ac1, ac2 = st.columns(2)
+ac1, ac2, ac3, ac4 = st.columns(4)
 with ac1:
-    combined_speed = st.slider('Combined analysis boat speed (knots)', 1.0, 20.0, 8.0, 0.5, key='combined_speed')
+    speed_min = st.number_input('Minimum boat speed (knots)', 1.0, 20.0, 2.0, 0.5, key='combined_speed_min')
 with ac2:
-    combined_alpha = st.slider('Combined keel angle of attack / leeway (deg)', -8.0, 8.0, 3.0, 0.25, key='combined_alpha')
+    speed_max = st.number_input('Maximum boat speed (knots)', 2.0, 30.0, 10.0, 0.5, key='combined_speed_max')
+with ac3:
+    speed_points = st.slider('Number of speed points', 3, 15, 9, 1, key='combined_speed_points')
+with ac4:
+    combined_alpha = st.slider('Keel angle of attack / leeway (deg)', 0.0, 10.0, 3.0, 0.25, key='combined_alpha')
+if speed_max <= speed_min:
+    st.warning('Maximum speed must exceed minimum speed.')
+    st.stop()
+combined_speeds = np.linspace(speed_min, speed_max, speed_points)
 
 with st.expander('Combined analysis advanced settings'):
     installed_e = st.number_input(
@@ -292,9 +300,6 @@ span_m = float(keel['span']) / 1000.0
 sref = 0.5 * (ct + cb) * span_m
 cmean = 0.5 * (ct + cb)
 ar = span_m**2 / max(sref, 1e-12)
-v = combined_speed * 0.514444
-q = 0.5 * SEAWATER_DENSITY * v**2
-
 # Approximate closed-section perimeter correction for the two selected thickness ratios.
 def _foil_perimeter_ratio(t_pct):
     x = np.linspace(0.0, 1.0, 1001)
@@ -312,14 +317,8 @@ keel_swet = float(np.trapezoid(chords*prs, eta)*span_m)
 a0 = 2.0*math.pi
 lift_slope = a0/(1.0+a0/(math.pi*installed_e*max(ar,1e-9)))
 keel_cl = lift_slope*math.radians(combined_alpha)
-keel_lift_n = q*sref*keel_cl
-re_keel = v*cmean/max(SEAWATER_NU,1e-12)
-cf_keel = 0.075/(max(math.log10(max(re_keel,1.0001))-2.0,1e-6)**2) if re_keel > 1e4 else 0.0
 tmean = 0.5*(float(keel['top_t'])+float(keel['bot_t']))/100.0
 keel_ff = 1.0+2.0*tmean+60.0*tmean**4
-keel_profile_n = q*keel_swet*cf_keel*keel_ff
-keel_induced_n = q*sref*(keel_cl**2/(math.pi*installed_e*max(ar,1e-12)))
-keel_drag_n = keel_profile_n+keel_induced_n
 
 # Bulb surface-area estimate from the saved longitudinal profile and a transverse ellipse/circle.
 # This intentionally remains a preliminary comparison model until the full bulb mesh is shared directly.
@@ -342,35 +341,68 @@ h = ((a-b)**2)/np.maximum((a+b)**2,1e-18)
 perim = math.pi*(a+b)*(1.0 + 3.0*h/(10.0+np.sqrt(np.maximum(4.0-3.0*h,1e-12))))
 bulb_swet = float(np.trapezoid(perim,xx))
 L_m = Lmm/1000.0
-re_bulb = v*L_m/max(SEAWATER_NU,1e-12)
-cf_bulb = 0.075/(max(math.log10(max(re_bulb,1.0001))-2.0,1e-6)**2) if re_bulb > 1e4 else 0.0
-bulb_drag_n = q*bulb_swet*cf_bulb*bulb_form_factor
+# Evaluate the existing hydrodynamic method at each requested boat speed.
+def combined_result_at_speed(speed_kn):
+    v = float(speed_kn) * 0.514444
+    q = 0.5 * SEAWATER_DENSITY * v**2
+    keel_lift_n = q * sref * keel_cl
+    re_keel = v * cmean / max(SEAWATER_NU, 1e-12)
+    cf_keel = 0.075 / (max(math.log10(max(re_keel, 1.0001))-2.0, 1e-6)**2) if re_keel > 1e4 else 0.0
+    keel_profile_n = q * keel_swet * cf_keel * keel_ff
+    keel_induced_n = q * sref * (keel_cl**2 / (math.pi * installed_e * max(ar, 1e-12)))
+    re_bulb = v * L_m / max(SEAWATER_NU, 1e-12)
+    cf_bulb = 0.075 / (max(math.log10(max(re_bulb, 1.0001))-2.0, 1e-6)**2) if re_bulb > 1e4 else 0.0
+    bulb_drag_n = q * bulb_swet * cf_bulb * bulb_form_factor
+    if (shape_mode == 'Asymmetric' and bulb.get('top_pct') is not None
+            and bulb.get('bottom_pct') is not None
+            and abs(float(bulb['top_pct'])-float(bulb['bottom_pct'])) > 1e-12):
+        max_width_m = float(bulb.get('width_mm') or 100.0)/1000.0
+        bulb_lift_kgf = 10.0*(max_width_m/0.100)*(speed_kn/14.0)**2
+    else:
+        bulb_lift_kgf = 0.0
+    keel_lift_kgf = keel_lift_n/G
+    keel_profile_kgf = keel_profile_n/G
+    keel_induced_kgf = keel_induced_n/G
+    bulb_drag_kgf = bulb_drag_n/G
+    total_lift = keel_lift_kgf + bulb_lift_kgf
+    total_drag = keel_profile_kgf + keel_induced_kgf + bulb_drag_kgf
+    return {
+        'Speed (kn)': float(speed_kn),
+        'Keel lift (kgf)': keel_lift_kgf,
+        'Bulb lift (kgf)': bulb_lift_kgf,
+        'Combined lift (kgf)': total_lift,
+        'Keel profile drag (kgf)': keel_profile_kgf,
+        'Keel induced drag (kgf)': keel_induced_kgf,
+        'Bulb drag (kgf)': bulb_drag_kgf,
+        'Combined drag (kgf)': total_drag,
+        'L/D': abs(total_lift)/total_drag if total_drag > 1e-12 else 0.0,
+    }
 
-# Keep the existing bulb app's deliberately modest zero-pitch asymmetric lift calibration.
-if shape_mode == 'Asymmetric' and bulb.get('top_pct') is not None and bulb.get('bottom_pct') is not None and abs(float(bulb['top_pct'])-float(bulb['bottom_pct'])) > 1e-12:
-    max_width_m = float(bulb.get('width_mm') or 100.0)/1000.0
-    bulb_lift_kgf = 10.0*(max_width_m/0.100)*(combined_speed/14.0)**2
-else:
-    bulb_lift_kgf = 0.0
-bulb_lift_n = bulb_lift_kgf*G
+combined_df = pd.DataFrame([combined_result_at_speed(speed) for speed in combined_speeds])
+st.subheader('Combined performance by boat speed')
+st.dataframe(combined_df.style.format({col: '{:.2f}' for col in combined_df.columns}),
+             hide_index=True, use_container_width=True)
 
-combined_lift_n = keel_lift_n+bulb_lift_n
-combined_drag_n = keel_drag_n+bulb_drag_n
-combined_ld = abs(combined_lift_n)/combined_drag_n if combined_drag_n > 1e-12 else 0.0
-
-m1,m2,m3,m4,m5 = st.columns(5)
-m1.metric('Keel lift',f'{keel_lift_n/G:.1f} kg')
-m2.metric('Bulb lift',f'{bulb_lift_n/G:.1f} kg')
-m3.metric('Combined lift',f'{combined_lift_n/G:.1f} kg')
-m4.metric('Combined drag',f'{combined_drag_n/G:.2f} kg')
-m5.metric('Combined L / D',f'{combined_ld:.1f}')
-
-d1,d2,d3,d4,d5 = st.columns(5)
-d1.metric('Keel wetted area',f'{keel_swet:.3f} m²')
-d2.metric('Bulb wetted area',f'{bulb_swet:.3f} m²')
-d3.metric('Keel profile drag',f'{keel_profile_n/G:.2f} kg')
-d4.metric('Keel induced drag',f'{keel_induced_n/G:.2f} kg')
-d5.metric('Bulb drag',f'{bulb_drag_n/G:.2f} kg')
+combined_graph = go.Figure()
+for column in ('Keel lift (kgf)', 'Bulb lift (kgf)', 'Combined lift (kgf)',
+               'Combined drag (kgf)'):
+    combined_graph.add_trace(go.Scatter(
+        x=combined_df['Speed (kn)'], y=combined_df[column],
+        mode='lines+markers', name=column))
+combined_graph.update_layout(
+    title=f'Keel + bulb performance at {combined_alpha:.2f}° leeway',
+    xaxis_title='Boat speed (knots)', yaxis_title='Lift / drag (kgf)',
+    height=460)
+st.plotly_chart(combined_graph, use_container_width=True)
+ld_graph = go.Figure()
+ld_graph.add_trace(go.Scatter(x=combined_df['Speed (kn)'],
+                              y=combined_df['L/D'], mode='lines+markers', name='L/D'))
+ld_graph.update_layout(title='Combined lift-to-drag ratio',
+                       xaxis_title='Boat speed (knots)', yaxis_title='L/D', height=300)
+st.plotly_chart(ld_graph, use_container_width=True)
+st.caption(f'Keel wetted area {keel_swet:.3f} m²; bulb wetted area {bulb_swet:.3f} m². '
+           'Drag comprises keel profile, keel induced and bulb drag. '
+           'All results are preliminary comparisons, not CFD.')
 
 with st.expander('Combined calculation assumptions'):
     st.write('Seawater density: 1025 kg/m³. Kinematic viscosity: 1.05 × 10⁻⁶ m²/s.')
@@ -562,7 +594,7 @@ fig3.update_layout(
 )
 st.plotly_chart(fig3,use_container_width=True)
 
-st.info('Next development step: refine the combined analysis after visual checking, then create the paid Combined PDF report with the dimensioned 2D drawing, analysis results and 3D view.')
+st.caption('The interactive 3D model is for on-screen inspection only and is not included in the PDF.')
 
 
 # ---------------- Combined PDF comparison report ----------------
@@ -627,9 +659,11 @@ def build_combined_pdf():
         if shape_mode=='Symmetric': bulb_txt += f'\nThickness / diameter {float(bulb.get("thickness_pct") or 0):.1f}%'
         else: bulb_txt += f'\nTop {float(bulb.get("top_pct") or 0):.1f}%; bottom {float(bulb.get("bottom_pct") or 0):.1f}%; width {float(bulb.get("width_mm") or 0):.0f} mm; Beaver tail {float(bulb.get("beaver_tail_pct") or 0):.0f}%'
         result_txt=(
-            f'ANALYSIS CONDITION\nBoat speed {combined_speed:.1f} kn; keel angle of attack / leeway {combined_alpha:.2f}°\nInstalled span efficiency e = {installed_e:.2f}; bulb form factor = {bulb_form_factor:.2f}\n\n'
-            f'RESULTS\nKeel lift {keel_lift_n/G:.1f} kgf\nBulb lift {bulb_lift_n/G:.1f} kgf\nCombined lift {combined_lift_n/G:.1f} kgf\n\n'
-            f'Keel profile drag {keel_profile_n/G:.2f} kgf\nKeel induced drag {keel_induced_n/G:.2f} kgf\nKeel total drag {keel_drag_n/G:.2f} kgf\nBulb drag {bulb_drag_n/G:.2f} kgf\nCombined drag {combined_drag_n/G:.2f} kgf\nCombined L/D {combined_ld:.1f}'
+            f'ANALYSIS SETTINGS\\nBoat speed {speed_min:.1f}–{speed_max:.1f} kn; '
+            f'{speed_points} points; leeway {combined_alpha:.2f}°\\n'
+            f'Installed span efficiency e = {installed_e:.2f}; '
+            f'bulb form factor = {bulb_form_factor:.2f}\\n\\n'
+            f'PERFORMANCE\\nSee speed sweep table and graphs on page 3.'
         )
         f.text(.09,.88,keel_txt,fontsize=10,va='top',linespacing=1.45)
         f.text(.09,.65,bulb_txt,fontsize=10,va='top',linespacing=1.45)
@@ -645,15 +679,60 @@ def build_combined_pdf():
         f.text(.09,.17,assumptions,fontsize=8.2,va='top',linespacing=1.4)
         pdf.savefig(f); plt.close(f)
 
-        # Page 3: 3D-style orthographic projections generated from the same geometry.
-        f=plt.figure(figsize=(11.69,8.27)); f.suptitle(f'{design_name} — Combined Geometry Views',fontsize=16,fontweight='bold',y=.96)
-        ax=f.add_axes([.07,.12,.86,.76],projection='3d')
-        ax.plot_surface(KX,KY,KZ,alpha=.55,linewidth=0); ax.plot_surface(KX,-KY,KZ,alpha=.55,linewidth=0)
-        ax.plot_surface(BX,BY,BZ,alpha=.48,linewidth=0)
-        ax.set_xlabel('Setout aft from bow (mm)'); ax.set_ylabel('Transverse (mm)'); ax.set_zlabel('Depth below LWL (mm)')
-        ax.invert_xaxis(); ax.invert_zaxis(); ax.view_init(elev=18,azim=-55)
-        f.text(.07,.045,'3D view generated from the same current keel and bulb geometry used in the combined analysis.',fontsize=8)
-        pdf.savefig(f); plt.close(f)
+        # Page 3: speed sweep table and graphs (no 3D illustration).
+        f = plt.figure(figsize=(11.69, 8.27))
+        f.suptitle(f'{design_name} — Combined Performance', fontsize=16, fontweight='bold', y=.96)
+        f.text(.07, .905, f'Leeway {combined_alpha:.2f}°  |  Speed {speed_min:.1f}–{speed_max:.1f} kn'
+               f'  |  Span efficiency {installed_e:.2f}  |  Bulb form factor {bulb_form_factor:.2f}',
+               fontsize=9)
+        ax = f.add_axes([.10, .52, .80, .32])
+        for col, label in [('Keel lift (kgf)', 'Keel lift'), ('Bulb lift (kgf)', 'Bulb lift'),
+                           ('Combined lift (kgf)', 'Combined lift'),
+                           ('Combined drag (kgf)', 'Combined drag')]:
+            ax.plot(combined_df['Speed (kn)'], combined_df[col], marker='o', markersize=3, label=label)
+        ax.set_xlabel('Boat speed (knots)')
+        ax.set_ylabel('Lift / drag (kgf)')
+        ax.grid(alpha=.3)
+        ax.legend(fontsize=7, ncol=4, loc='upper left')
+        cols = ['Speed (kn)', 'Keel lift (kgf)', 'Bulb lift (kgf)', 'Combined lift (kgf)',
+                'Keel profile drag (kgf)', 'Keel induced drag (kgf)',
+                'Bulb drag (kgf)', 'Combined drag (kgf)', 'L/D']
+        headings = ['Speed', 'Keel lift', 'Bulb lift', 'Total lift', 'Profile drag',
+                    'Induced drag', 'Bulb drag', 'Total drag', 'L/D']
+        data = [[f'{float(row[c]):.2f}' for c in cols] for _, row in combined_df.iterrows()]
+        tab_ax = f.add_axes([.04, .12, .92, .34])
+        tab_ax.axis('off')
+        table = tab_ax.table(cellText=data, colLabels=headings, loc='center', cellLoc='center')
+        table.auto_set_font_size(False)
+        table.set_fontsize(7.1)
+        table.scale(1, 1.18)
+        f.text(.07, .055, 'Preliminary finite-wing and friction estimates. '
+               'Junction interference, heel and free-surface effects excluded.', fontsize=8)
+        pdf.savefig(f)
+        plt.close(f)
+
+        # Page 4: L/D chart and ballast-only righting moment results.
+        f = plt.figure(figsize=(11.69, 8.27))
+        f.suptitle(f'{design_name} — Efficiency & Righting Moment',
+                   fontsize=16, fontweight='bold', y=.96)
+        ax1 = f.add_axes([.10, .55, .80, .30])
+        ax1.plot(combined_df['Speed (kn)'], combined_df['L/D'], marker='o')
+        ax1.set_xlabel('Boat speed (knots)')
+        ax1.set_ylabel('Combined L/D')
+        ax1.grid(alpha=.3)
+        ax2 = f.add_axes([.10, .17, .80, .27])
+        ax2.plot(heel_deg, total_rm_kgm, marker='o', label='Total RM')
+        ax2.plot(heel_deg, bulb_rm_kgm, marker='o', label='Bulb RM')
+        ax2.plot(heel_deg, keel_rm_kgm, marker='o', label='Keel RM')
+        ax2.set_xlabel('Heel angle (degrees)')
+        ax2.set_ylabel('Ballast RM (kg·m)')
+        ax2.legend(fontsize=8)
+        ax2.grid(alpha=.3)
+        f.text(.07, .075, f'Keel weight {keel_weight:.1f} kg, VCG {keel_vcg_mm:.0f} mm; '
+               f'bulb weight {bulb_weight:.1f} kg, VCG {bulb_vcg_mm:.0f} mm.', fontsize=9)
+        f.text(.07, .045, 'Ballast-only righting moment; excludes hull, crew, rig and other weights.', fontsize=8)
+        pdf.savefig(f)
+        plt.close(f)
     buf.seek(0); return buf.getvalue()
 
 # Complete the header actions using the current live design and calculated report.
